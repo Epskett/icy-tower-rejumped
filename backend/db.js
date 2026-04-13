@@ -77,6 +77,20 @@ async function getProfile(ngId) {
     return newProfile;
 }
 
+async function getProfiles(ngIds) {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('ng_id', ngIds);
+
+    if (error) {
+        console.error('[DB] Error fetching profiles:', error);
+        throw error;
+    }
+
+    return data;
+}
+
 async function updateProfile(ngId, updates) {
     const { data, error } = await supabase
         .from('profiles')
@@ -221,6 +235,7 @@ async function deleteChallenge(id) {
 module.exports = {
     supabase,
     getProfile,
+    getProfiles,
     updateProfile,
     addCoins,
     recordScore,
