@@ -12,7 +12,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const DEFAULT_SAVE = {
     gender: "MALE",
-    profile_pic: "http://localhost:3000/profile.png",
+    profile_pic: "https://icy-tower-rejumped.onrender.com/profile.png",
     language: "english",
     coins: 50000,
     vip_level: 0,
