@@ -47,7 +47,7 @@ function decodeBody(body) {
     return body;
 }
 
-let baseUrl = process.env.BACKEND_URL || "http://localhost:3000";
+let baseUrl = process.env.BACKEND_URL || "https://icy-tower-rejumped.onrender.com";
 if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
 function buildAccountXML(save) {
