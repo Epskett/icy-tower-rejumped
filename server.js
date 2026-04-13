@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const { 
-    getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
+    getProfile, getProfiles, updateProfile, addCoins, recordScore, getLeaderboard,
     getChallenges, createChallenge, updateChallenge, deleteChallenge 
 } = require('./backend/db');
 const sharp = require('sharp');
@@ -228,6 +228,19 @@ app.post('/api/sync-profile', express.json(), async (req, res) => {
     }
 });
 
+app.post('/api/get-profiles', express.json(), async (req, res) => {
+    const { uids } = req.body;
+    if (!uids || !Array.isArray(uids)) return res.status(400).json({ error: 'Missing UIDs array' });
+    
+    try {
+        const profiles = await getProfiles(uids);
+        res.json({ profiles });
+    } catch (e) {
+        console.error('[get-profiles] Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/games/icytower/backend/server.1.0.1/server3.php', async (req, res) => {
     const params = decodeBody(req.body);
     const ngId = params.uid || "420";
@@ -423,7 +436,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
             const localAvatar = `${baseUrl}/avatars/${s.ng_id}.png`;
             
-            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" />\n        `;
+            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" appearance="${s.appearance || ''}" />\n        `;
             resultsXML += `<result uid="${s.ng_id}" tid="${s.tid}" when="${when}" score="${s.score}" floor="${s.floor}" combo="${s.combo}" />\n        `;
         });
 
