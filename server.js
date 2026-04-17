@@ -3,13 +3,14 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const { 
-    getProfile, getProfiles, updateProfile, addCoins, recordScore, getLeaderboard,
+    getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
     getChallenges, createChallenge, updateChallenge, deleteChallenge 
 } = require('./backend/db');
 const sharp = require('sharp');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const compression = require('compression');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,15 +21,21 @@ if (!fs.existsSync(avatarsDir)) {
 }
 
 app.use(cors());
+app.use(compression());
 app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
 app.use(bodyParser.json({ limit: '5mb' }));
 
-app.use((req, res, next) => {
+const apiNoCache = (req, res, next) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
     next();
-});
+};
+
+app.use('/games/icytower/backend', apiNoCache);
+app.use('/api', apiNoCache);
+app.use('/tools', apiNoCache);
+
 
 function decodeBody(body) {
     if (body && body.data) {
@@ -149,9 +156,14 @@ app.get('/tools/check_interstitial', (req, res) => {
 
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-app.use(express.static(path.join(__dirname, 'icytower/flash')));
-app.use(express.static(__dirname));
-app.use('/avatars', express.static(path.join(__dirname, 'avatars')));
+const staticOptions = {
+    maxAge: '1y',
+    etag: true
+};
+
+app.use(express.static(path.join(__dirname, 'icytower/flash'), staticOptions));
+app.use(express.static(__dirname, staticOptions));
+app.use('/avatars', express.static(path.join(__dirname, 'avatars'), staticOptions));
 
 async function ensureAvatarCached(uid, avatarUrl) {
     if (!avatarUrl) return;
@@ -203,40 +215,31 @@ app.post('/api/sync-profile', express.json(), async (req, res) => {
         const avatarUrl = avatar;
         const localAvatarPath = path.join(avatarsDir, `${uid}.png`);
         
-        console.log(`[sync-profile] Downloading avatar for ${name}...`);
-        
-        const client = avatarUrl.startsWith('https') ? https : http;
-        
-        client.get(avatarUrl, (response) => {
-            if (response.statusCode === 200) {
-                const transformer = sharp().png().resize(100, 100);
-                response.pipe(transformer).toFile(localAvatarPath, (err) => {
-                    if (err) console.error('[sync-profile] Avatar conversion failed:', err.message);
-                    else console.log(`[sync-profile] Avatar cached: ${localAvatarPath}`);
-                });
-            } else {
-                console.error(`[sync-profile] Failed to download avatar: Status ${response.statusCode}`);
-            }
-        }).on('error', (err) => {
-            console.error('[sync-profile] Download error:', err.message);
-        });
+        if (!fs.existsSync(localAvatarPath)) {
+            console.log(`[sync-profile] Downloading avatar for ${name}...`);
+            
+            const client = avatarUrl.startsWith('https') ? https : http;
+            
+            client.get(avatarUrl, (response) => {
+                if (response.statusCode === 200) {
+                    const transformer = sharp().png().resize(100, 100);
+                    response.pipe(transformer).toFile(localAvatarPath, (err) => {
+                        if (err) console.error('[sync-profile] Avatar conversion failed:', err.message);
+                        else console.log(`[sync-profile] Avatar cached: ${localAvatarPath}`);
+                    });
+                } else {
+                    console.error(`[sync-profile] Failed to download avatar: Status ${response.statusCode}`);
+                }
+            }).on('error', (err) => {
+                console.error('[sync-profile] Download error:', err.message);
+            });
+        } else {
+            console.log(`[sync-profile] Avatar already cached for ${name}. Skipping download.`);
+        }
 
         res.json({ success: true });
     } catch (e) {
         console.error('[sync-profile] Error:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/get-profiles', express.json(), async (req, res) => {
-    const { uids } = req.body;
-    if (!uids || !Array.isArray(uids)) return res.status(400).json({ error: 'Missing UIDs array' });
-    
-    try {
-        const profiles = await getProfiles(uids);
-        res.json({ profiles });
-    } catch (e) {
-        console.error('[get-profiles] Error:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -436,7 +439,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
             const localAvatar = `${baseUrl}/avatars/${s.ng_id}.png`;
             
-            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" appearance="${s.appearance || ''}" />\n        `;
+            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" />\n        `;
             resultsXML += `<result uid="${s.ng_id}" tid="${s.tid}" when="${when}" score="${s.score}" floor="${s.floor}" combo="${s.combo}" />\n        `;
         });
 
