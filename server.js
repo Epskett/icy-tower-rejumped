@@ -453,7 +453,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
             const localAvatar = `${baseUrl}/avatars/${s.ng_id}.png`;
 
-            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" />\n        `;
+            resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" appearance="${s.appearance || ''}" profile_pic="${localAvatar}" />\n        `;
             resultsXML += `<result uid="${s.ng_id}" tid="${s.tid}" when="${when}" score="${s.score}" floor="${s.floor}" combo="${s.combo}" />\n        `;
         });
 
