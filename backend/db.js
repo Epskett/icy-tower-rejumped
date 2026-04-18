@@ -77,20 +77,6 @@ async function getProfile(ngId) {
     return newProfile;
 }
 
-async function getProfiles(ngIds) {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('ng_id', ngIds);
-
-    if (error) {
-        console.error('[DB] Error fetching profiles:', error);
-        throw error;
-    }
-
-    return data;
-}
-
 async function updateProfile(ngId, updates) {
     const { data, error } = await supabase
         .from('profiles')
@@ -158,6 +144,17 @@ async function getLeaderboard(tid, orderMetric, when, uids = null, limit = 25) {
     if (error) {
         console.error('[DB] Error fetching leaderboard RPC:', error);
         throw error;
+    }
+
+    if (data && data.length > 0) {
+        const returnedUids = data.map(s => String(s.ng_id));
+        const { data: profiles } = await supabase.from('profiles').select('ng_id, appearance').in('ng_id', returnedUids);
+        if (profiles) {
+            data.forEach(s => {
+                const p = profiles.find(profile => profile.ng_id === String(s.ng_id));
+                if (p) s.appearance = p.appearance;
+            });
+        }
     }
 
     return data;
@@ -235,7 +232,6 @@ async function deleteChallenge(id) {
 module.exports = {
     supabase,
     getProfile,
-    getProfiles,
     updateProfile,
     addCoins,
     recordScore,
