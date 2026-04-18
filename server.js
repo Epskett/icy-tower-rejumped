@@ -443,18 +443,6 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
     try {
         const scores = await getLeaderboard(tid, orderMetric, when, uids, limit);
-
-        if (scores && scores.length > 0) {
-            const returnedUids = scores.map(s => String(s.ng_id));
-            const { data: profiles } = await supabase.from('profiles').select('ng_id, appearance').in('ng_id', returnedUids);
-            if (profiles) {
-                scores.forEach(s => {
-                    const p = profiles.find(profile => profile.ng_id === String(s.ng_id));
-                    if (p) s.appearance = p.appearance;
-                });
-            }
-        }
-
         console.log(`[get_results.php] Social lookup resolved with ${scores.length} score entries.`);
 
         let resultsXML = "";
