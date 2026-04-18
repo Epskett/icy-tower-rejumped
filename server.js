@@ -171,7 +171,7 @@ const serveLegacyAvatar = (req, res) => {
     if (fs.existsSync(localAvatarPath)) {
         return res.sendFile(localAvatarPath);
     } else {
-        return res.status(404).end();
+        return res.sendFile(path.join(__dirname, 'profile.png'));
     }
 };
 
@@ -443,6 +443,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
     try {
         const scores = await getLeaderboard(tid, orderMetric, when, uids, limit);
+        console.log(`[get_results.php] Social lookup resolved with ${scores.length} score entries.`);
 
         let resultsXML = "";
         scores.forEach(s => {
