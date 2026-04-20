@@ -2,9 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
-const { 
+const {
     getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
-    getChallenges, createChallenge, updateChallenge, deleteChallenge 
+    getChallenges, createChallenge, updateChallenge, deleteChallenge
 } = require('./backend/db');
 const sharp = require('sharp');
 const fs = require('fs');
@@ -58,9 +58,9 @@ let baseUrl = process.env.BACKEND_URL || "https://icy-tower-rejumped.onrender.co
 if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
 function buildAccountXML(save) {
-    const itemsXML  = save.items.map(id  => `<item id="${id}" />`).join('\n            ');
+    const itemsXML = save.items.map(id => `<item id="${id}" />`).join('\n            ');
     const towersXML = save.towers.map(tid => `<tower tid="${tid}" />`).join('\n            ');
-    
+
     let resultsXML = "";
     if (save.tower_results) {
         for (const tid in save.tower_results) {
@@ -70,9 +70,9 @@ function buildAccountXML(save) {
     }
 
     const witems = Buffer.from('<witems></witems>').toString('base64');
-    
+
     const proxiedPic = `${baseUrl}/avatars/${save.ng_id}.png`;
-    
+
     return `
     <response status="ok" free_towers="0">
         <user uid="${save.ng_id}" first_name="${save.first_name || 'Player'}" last_name="${save.last_name || ''}" gender="${save.gender}" profile_pic="${proxiedPic}" language="${save.language}" last_active="${Math.floor(new Date(save.last_active).getTime() / 1000)}" last_version="${save.last_version}" />
@@ -109,12 +109,40 @@ function buildAccountXML(save) {
 
 const wrapXML = (content) => `<?xml version="1.0" encoding="UTF-8"?>\n${content}`;
 
+function buildUserProgressXML(save) {
+    let resultsXML = '';
+    if (save.tower_results) {
+        for (const tid in save.tower_results) {
+            const r = save.tower_results[tid];
+            resultsXML += `<result uid="${save.ng_id}" tid="${tid}" when="all_time" score="${r.score}" floor="${r.floor}" combo="${r.combo}" />\n            `;
+        }
+    }
+    return `
+    <response status="ok">
+        <result>1</result>
+        <progress
+            uid="${save.ng_id}"
+            times_played="${save.stats.times_played}"
+            scores="${save.stats.scores}"
+            floors="${save.stats.floors}"
+            combos="${save.stats.combos}"
+            jumps="${save.stats.jumps}"
+            challenges_won="${save.stats.challenges_won}"
+            challenges_lost="${save.stats.challenges_lost}"
+        />
+        <trophies>${save.trophies || ''}</trophies>
+        <results>
+            ${resultsXML}
+        </results>
+    </response>`;
+}
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 app.get('/img-proxy', async (req, res) => {
     let targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('CORS Proxy: Missing URL');
-    
+
     if (targetUrl.includes('localhost') || targetUrl.includes('127.0.0.1')) {
         try {
             const urlObj = new URL(targetUrl);
@@ -129,19 +157,19 @@ app.get('/img-proxy', async (req, res) => {
     }
 
     console.log('[img-proxy] Fetching & Converting:', targetUrl);
-    
+
     try {
         const response = await fetch(targetUrl);
         if (!response.ok) throw new Error(`Remote server responded with ${response.status}`);
-        
+
         const buffer = await response.arrayBuffer();
-        
+
         const pngBuffer = await sharp(Buffer.from(buffer))
             .png()
             .toBuffer();
-        
+
         res.set('Content-Type', 'image/png');
-        res.set('Access-Control-Allow-Origin', '*'); 
+        res.set('Access-Control-Allow-Origin', '*');
         res.set('Cache-Control', 'public, max-age=86400');
         res.send(pngBuffer);
     } catch (e) {
@@ -188,11 +216,11 @@ app.post('/games/icytower/backend/server.1.0.1/accounts.php', async (req, res) =
     const params = decodeBody(req.body);
     const ngId = params.accountUID || params.uid || "420";
     console.log('[accounts.php]', params.do || 'load', 'UID:', ngId);
-    
+
     try {
         const save = await getProfile(ngId);
         await updateProfile(ngId, { last_active: new Date().toISOString() });
-        
+
         res.set('Content-Type', 'text/xml');
         res.send(wrapXML(buildAccountXML(save)));
     } catch (e) {
@@ -204,22 +232,22 @@ app.post('/games/icytower/backend/server.1.0.1/accounts.php', async (req, res) =
 app.post('/api/sync-profile', express.json(), async (req, res) => {
     const { uid, name, avatar } = req.body;
     console.log('[sync-profile] Syncing UID:', uid, 'Name:', name);
-    
+
     try {
         await getProfile(uid);
-        
-        await updateProfile(uid, { 
+
+        await updateProfile(uid, {
             first_name: name,
             profile_pic: avatar
         });
         const avatarUrl = avatar;
         const localAvatarPath = path.join(avatarsDir, `${uid}.png`);
-        
+
         if (!fs.existsSync(localAvatarPath)) {
             console.log(`[sync-profile] Downloading avatar for ${name}...`);
-            
+
             const client = avatarUrl.startsWith('https') ? https : http;
-            
+
             client.get(avatarUrl, (response) => {
                 if (response.statusCode === 200) {
                     const transformer = sharp().png().resize(100, 100);
@@ -249,7 +277,7 @@ app.post('/games/icytower/backend/server.1.0.1/server3.php', async (req, res) =>
     const ngId = params.uid || "420";
     const action = params.do;
     console.log('[server3.php]', action, 'UID:', ngId);
-    
+
     try {
         const save = await getProfile(ngId);
         const updates = {};
@@ -267,7 +295,7 @@ app.post('/games/icytower/backend/server.1.0.1/server3.php', async (req, res) =>
                 console.log(`  → Trophy bonus: +${bonus} coins (Atomic)`);
             }
         } else if (action === 'putLanguage') {
-            if (params.language)   updates.language   = params.language;
+            if (params.language) updates.language = params.language;
             if (params.appearance) updates.appearance = params.appearance;
             console.log('  → Saved language:', updates.language);
         }
@@ -289,7 +317,7 @@ app.post('/games/icytower/backend/server.1.0.1/transactions.php', async (req, re
     const ngId = params.uid || "420";
     const action = params.do;
     console.log('[transactions.php]', action, 'UID:', ngId);
-    
+
     try {
         const save = await getProfile(ngId);
         let okToBuy = false;
@@ -297,7 +325,7 @@ app.post('/games/icytower/backend/server.1.0.1/transactions.php', async (req, re
 
         if (action === 'purchaseItem') {
             const itemId = params.item;
-            const cost   = parseInt(params.cost) || 0;
+            const cost = parseInt(params.cost) || 0;
             if (save.items.includes(itemId)) {
                 okToBuy = true;
             } else if (parseInt(save.coins) >= cost) {
@@ -307,7 +335,7 @@ app.post('/games/icytower/backend/server.1.0.1/transactions.php', async (req, re
                 console.log(`  → Bought item "${itemId}" for ${cost} coins`);
             }
         } else if (action === 'purchaseTower') {
-            const tid  = parseInt(params.tid);
+            const tid = parseInt(params.tid);
             const cost = parseInt(params.cost) || 0;
             if (save.towers.includes(tid)) {
                 okToBuy = true;
@@ -331,6 +359,21 @@ app.post('/games/icytower/backend/server.1.0.1/transactions.php', async (req, re
     }
 });
 
+app.post('/games/icytower/backend/server.1.0.1/get_user_progress.php', async (req, res) => {
+    const params = decodeBody(req.body);
+    const targetId = params.accountUID || params.uid || '420';
+    console.log('[get_user_progress.php] Fetching progress for UID:', targetId);
+
+    try {
+        const save = await getProfile(targetId);
+        res.set('Content-Type', 'text/xml');
+        res.send(wrapXML(buildUserProgressXML(save)));
+    } catch (e) {
+        console.error('[get_user_progress.php] Error:', e);
+        res.status(500).send('Database Error');
+    }
+});
+
 app.post('/games/icytower/backend/server.1.0.1/challenges.php', async (req, res) => {
     const params = decodeBody(req.body);
     const action = params.do;
@@ -341,7 +384,7 @@ app.post('/games/icytower/backend/server.1.0.1/challenges.php', async (req, res)
     try {
         if (action === 'getChallenges') {
             const list = await getChallenges(ngId);
-            
+
             let challengesXML = "";
             list.forEach(c => {
                 challengesXML += `
@@ -430,7 +473,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
 
     try {
         const scores = await getLeaderboard(tid, orderMetric, when, uids, limit);
-        
+
         let resultsXML = "";
         scores.forEach(s => {
             if (s.profile_pic) {
@@ -438,7 +481,7 @@ app.post('/games/icytower/backend/server.1.0.1/get_results.php', async (req, res
             }
 
             const localAvatar = `${baseUrl}/avatars/${s.ng_id}.png`;
-            
+
             resultsXML += `<user uid="${s.ng_id}" first_name="${s.first_name}" profile_pic="${localAvatar}" />\n        `;
             resultsXML += `<result uid="${s.ng_id}" tid="${s.tid}" when="${when}" score="${s.score}" floor="${s.floor}" combo="${s.combo}" />\n        `;
         });
@@ -455,7 +498,7 @@ app.post('/games/icytower/backend/server.1.0.1/put_results.php', async (req, res
     const params = decodeBody(req.body);
     const ngId = params.uid || "420";
     console.log('[put_results.php]', 'UID:', ngId);
-    
+
     try {
         const save = await getProfile(ngId);
         const updates = {
@@ -473,13 +516,13 @@ app.post('/games/icytower/backend/server.1.0.1/put_results.php', async (req, res
         updates.stats.scores += (parseInt(params.score) || 0);
         updates.stats.floors += (parseInt(params.floor) || 0);
         updates.stats.combos += (parseInt(params.combos) || 0);
-        updates.stats.jumps  += (parseInt(params.jumps) || 0);
+        updates.stats.jumps += (parseInt(params.jumps) || 0);
 
         const tid = params.tid || "1";
         if (!updates.tower_results[tid]) {
             updates.tower_results[tid] = { score: 0, floor: 0, combo: 0 };
         }
-        
+
         const runScore = parseInt(params.score) || 0;
         const runFloor = parseInt(params.floor) || 0;
         const runCombo = parseInt(params.combo) || 0;
@@ -489,7 +532,7 @@ app.post('/games/icytower/backend/server.1.0.1/put_results.php', async (req, res
         if (runCombo > updates.tower_results[tid].combo) updates.tower_results[tid].combo = runCombo;
 
         await updateProfile(ngId, updates);
-        
+
         await recordScore(ngId, tid, { score: runScore, floor: runFloor, combo: runCombo });
 
         res.set('Content-Type', 'text/xml');
