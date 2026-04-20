@@ -141,6 +141,22 @@ function buildUserProgressXML(save) {
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
+app.get('/language/:file', (req, res) => {
+    const file = req.params.file;
+    if (!file.endsWith('.xml') || file.includes('..') || file.includes('/')) {
+        return res.status(400).send('Invalid file');
+    }
+    const langPath = path.join(__dirname, 'icytower', 'flash', 'data', 'language', file);
+    if (!fs.existsSync(langPath)) {
+        return res.status(404).send('Language file not found');
+    }
+    res.set('Content-Type', 'text/xml; charset=utf-8');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.sendFile(langPath);
+});
+
+
 app.get('/img-proxy', async (req, res) => {
     let targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('CORS Proxy: Missing URL');
