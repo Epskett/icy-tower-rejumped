@@ -120,16 +120,17 @@ function buildUserProgressXML(save) {
     return `
     <response status="ok">
         <result>1</result>
-        <progress
-            uid="${save.ng_id}"
-            times_played="${save.stats.times_played}"
-            scores="${save.stats.scores}"
-            floors="${save.stats.floors}"
-            combos="${save.stats.combos}"
-            jumps="${save.stats.jumps}"
-            challenges_won="${save.stats.challenges_won}"
-            challenges_lost="${save.stats.challenges_lost}"
-        />
+        <progress uid="${save.ng_id}">
+            <times_played>${save.stats.times_played}</times_played>
+            <scores>${save.stats.scores}</scores>
+            <floors>${save.stats.floors}</floors>
+            <combos>${save.stats.combos}</combos>
+            <jumps>${save.stats.jumps}</jumps>
+            <challenges_won>${save.stats.challenges_won}</challenges_won>
+            <challenges_lost>${save.stats.challenges_lost}</challenges_lost>
+            <coins>${save.coins}</coins>
+            <vip_level>${save.vip_level}</vip_level>
+        </progress>
         <trophies>${save.trophies || ''}</trophies>
         <results>
             ${resultsXML}
