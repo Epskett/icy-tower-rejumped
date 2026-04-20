@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
 const {
+    supabase,
     getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
     getChallenges, createChallenge, updateChallenge, deleteChallenge
 } = require('./backend/db');
@@ -384,6 +385,14 @@ app.post('/games/icytower/backend/server.1.0.1/challenges.php', async (req, res)
 
     try {
         if (action === 'getChallenges') {
+            const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            await supabase.from('challenges').delete()
+                .or(`uid1.eq.${ngId},uid2.eq.${ngId}`)
+                .eq('turn', 0);
+            await supabase.from('challenges').delete()
+                .or(`uid1.eq.${ngId},uid2.eq.${ngId}`)
+                .lt('created_at', cutoff);
+
             const list = await getChallenges(ngId);
 
             let challengesXML = "";
@@ -438,14 +447,38 @@ app.post('/games/icytower/backend/server.1.0.1/challenges.php', async (req, res)
 
         } else if (action === 'updateChallenge') {
             const id = params.id;
+            const isDraw = params.draw === 'true';
+            const winnerUID = params.winner;
+            const loserUID = params.loser;
+
             const updates = {
                 replay2: params.replay,
                 floor2: parseInt(params.floor) || 0,
-                winner: params.winner,
+                winner: winnerUID,
                 status: 'completed',
-                turn: 0
+                turn: 1,
+                phase: 2
             };
             await updateChallenge(id, updates);
+
+            if (!isDraw && winnerUID && loserUID && winnerUID !== loserUID) {
+                const [winSave, loseSave] = await Promise.all([
+                    getProfile(winnerUID),
+                    getProfile(loserUID)
+                ]);
+                await Promise.all([
+                    updateProfile(winnerUID, {
+                        stats: { ...winSave.stats, challenges_won: (winSave.stats.challenges_won || 0) + 1 }
+                    }),
+                    updateProfile(loserUID, {
+                        stats: { ...loseSave.stats, challenges_lost: (loseSave.stats.challenges_lost || 0) + 1 }
+                    })
+                ]);
+                console.log(`[challenges.php] updateChallenge: winner=${winnerUID} (+1 won), loser=${loserUID} (+1 lost)`);
+            } else if (isDraw) {
+                console.log(`[challenges.php] updateChallenge: draw - no stat change`);
+            }
+
             res.set('Content-Type', 'text/xml');
             res.send(wrapXML('<response status="ok" />'));
 
