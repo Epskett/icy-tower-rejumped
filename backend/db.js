@@ -146,17 +146,6 @@ async function getLeaderboard(tid, orderMetric, when, uids = null, limit = 25) {
         throw error;
     }
 
-    if (data && data.length > 0) {
-        const returnedUids = data.map(s => String(s.ng_id));
-        const { data: profiles } = await supabase.from('profiles').select('ng_id, appearance').in('ng_id', returnedUids);
-        if (profiles) {
-            data.forEach(s => {
-                const p = profiles.find(profile => profile.ng_id === String(s.ng_id));
-                if (p) s.appearance = p.appearance;
-            });
-        }
-    }
-
     return data;
 }
 
