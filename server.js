@@ -58,6 +58,30 @@ function decodeBody(body) {
 let baseUrl = process.env.BACKEND_URL || "https://icy-tower-rejumped.onrender.com";
 if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
+const ALL_TROPHY_IDS = [
+    "bigspender", "challenger", "coins", "combo", "floors1", "combo2", "floors2",
+    "classic", "disco", "jungle", "western", "space", "factory", "ocean", "adventure",
+    "friends", "gift", "hello", "nocoins", "addict", "cheapy"
+];
+
+function calculateTrophyTier(trophiesString) {
+    if (!trophiesString) return 0;
+    const map = {};
+    for (const entry of trophiesString.split('|')) {
+        const parts = entry.split(',');
+        if (parts.length >= 2) {
+            const id = parts[0].trim();
+            const level = parseInt(parts[1]) || 0;
+            if (id) map[id] = level;
+        }
+    }
+    const levels = ALL_TROPHY_IDS.map(id => map[id] || 0);
+    if (levels.every(lvl => lvl >= 300)) return 3; // Gold (Frame 4)
+    if (levels.every(lvl => lvl >= 200)) return 2; // Silver (Frame 3)
+    if (levels.every(lvl => lvl >= 100)) return 1; // Bronze (Frame 2)
+    return 0; // Default (Frame 1)
+}
+
 function buildAccountXML(save) {
     const itemsXML = save.items.map(id => `<item id="${id}" />`).join('\n            ');
     const towersXML = save.towers.map(tid => `<tower tid="${tid}" />`).join('\n            ');
@@ -71,15 +95,15 @@ function buildAccountXML(save) {
     }
 
     const witems = Buffer.from('<witems></witems>').toString('base64');
-
     const proxiedPic = `${baseUrl}/avatars/${save.ng_id}.png`;
+    const computedVipLevel = calculateTrophyTier(save.trophies);
 
     return `
     <response status="ok" free_towers="0">
         <user uid="${save.ng_id}" first_name="${save.first_name || 'Player'}" last_name="${save.last_name || ''}" gender="${save.gender}" profile_pic="${proxiedPic}" language="${save.language}" last_active="${Math.floor(new Date(save.last_active).getTime() / 1000)}" last_version="${save.last_version}" />
         <progress>
             <coins>${save.coins}</coins>
-            <vip_level>${save.vip_level}</vip_level>
+            <vip_level>${computedVipLevel}</vip_level>
             <new_coins>0</new_coins>
             <times_played>${save.stats.times_played}</times_played>
             <scores>${save.stats.scores}</scores>
@@ -118,6 +142,7 @@ function buildUserProgressXML(save) {
             resultsXML += `<result uid="${save.ng_id}" tid="${tid}" when="all_time" score="${r.score}" floor="${r.floor}" combo="${r.combo}" />\n            `;
         }
     }
+    const computedVipLevel = calculateTrophyTier(save.trophies);
     return `
     <response status="ok">
         <result>1</result>
@@ -130,7 +155,7 @@ function buildUserProgressXML(save) {
             <challenges_won>${save.stats.challenges_won}</challenges_won>
             <challenges_lost>${save.stats.challenges_lost}</challenges_lost>
             <coins>${save.coins}</coins>
-            <vip_level>${save.vip_level}</vip_level>
+            <vip_level>${computedVipLevel}</vip_level>
         </progress>
         <trophies>${save.trophies || ''}</trophies>
         <results>
@@ -290,7 +315,10 @@ app.post('/games/icytower/backend/server.1.0.1/server3.php', async (req, res) =>
                 console.log('  → Saved appearance:', params.appearance);
             }
         } else if (action === 'putTrophies') {
-            if (params.trophies !== undefined) updates.trophies = params.trophies;
+            if (params.trophies !== undefined) {
+                updates.trophies = params.trophies;
+                updates.vip_level = calculateTrophyTier(params.trophies);
+            }
             const bonus = parseInt(params.coins) || 0;
             if (bonus > 0) {
                 await addCoins(ngId, bonus);
