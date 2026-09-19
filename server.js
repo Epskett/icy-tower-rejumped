@@ -37,6 +37,15 @@ app.use('/games/icytower/backend', apiNoCache);
 app.use('/api', apiNoCache);
 app.use('/tools', apiNoCache);
 
+app.post('/api/debug_log', (req, res) => {
+    let b = req.body;
+    if (Buffer.isBuffer(b)) {
+        try { b = JSON.parse(b.toString('utf8')); } catch (e) { b = b.toString('utf8'); }
+    }
+    console.log('[DEBUG_LOG]:', b);
+    res.json({ ok: true });
+});
+
 
 function decodeBody(body) {
     if (body && body.data) {
@@ -613,6 +622,8 @@ app.get('/profile.png', (req, res) => {
         res.status(404).send('Not found');
     }
 });
+
+app.use('/ImageCardAssets', express.static(path.join(__dirname, 'ImageCardAssets')));
 
 app.use('/games/icytower', (req, res) => {
     const fullPath = path.join(__dirname, 'icytower/flash', req.path);
