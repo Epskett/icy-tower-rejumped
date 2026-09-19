@@ -308,6 +308,41 @@ app.post('/api/sync-profile', express.json(), async (req, res) => {
     }
 });
 
+app.post('/api/friends-profiles', express.json(), async (req, res) => {
+    const { uids } = req.body;
+    console.log('[friends-profiles] Fetching profiles for UIDs:', uids);
+    if (!uids || !Array.isArray(uids) || uids.length === 0) {
+        return res.json({});
+    }
+
+    try {
+        const cleanUids = uids.map(id => id.toString().trim()).filter(id => id.length > 0);
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('ng_id, appearance, gender')
+            .in('ng_id', cleanUids);
+
+        if (error) {
+            console.error('[friends-profiles] Error:', error);
+            return res.status(500).json({ error: error.message });
+        }
+
+        const result = {};
+        if (data) {
+            data.forEach(p => {
+                result[p.ng_id] = {
+                    appearance: p.appearance || "",
+                    gender: p.gender || (p.appearance && p.appearance.startsWith("FEMALE,") ? "FEMALE" : "MALE")
+                };
+            });
+        }
+        res.json(result);
+    } catch (e) {
+        console.error('[friends-profiles] Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/games/icytower/backend/server.1.0.1/server3.php', async (req, res) => {
     const params = decodeBody(req.body);
     const ngId = params.uid || "420";
