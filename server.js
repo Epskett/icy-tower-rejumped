@@ -2,12 +2,168 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const db = require('./backend/db');
 const {
     supabase,
     getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
-    getChallenges, createChallenge, updateChallenge, deleteChallenge,
-    saveReplay, getReplay, getUserReplays
-} = require('./backend/db');
+    getChallenges, createChallenge, updateChallenge, deleteChallenge
+} = db;
+
+const replayChars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+function generateReplayCode(len = 5) {
+    let code = '';
+    for (let i = 0; i < len; i++) {
+        code += replayChars.charAt(Math.floor(Math.random() * replayChars.length));
+    }
+    return code;
+}
+
+const memoryReplays = new Map();
+
+const safeSaveReplay = async function (replayData) {
+    if (typeof db.saveReplay === 'function') {
+        try {
+            return await db.saveReplay(replayData);
+        } catch (dbErr) {
+            console.error('[saveReplay] db.saveReplay threw:', dbErr.message);
+        }
+    }
+
+    const ngId = String(replayData.ng_id || 'guest');
+    const client = db.supabase || supabase;
+    let code = generateReplayCode(5);
+
+    if (client) {
+        try {
+            if (ngId !== 'guest') {
+                const { data: existing } = await client
+                    .from('replays')
+                    .select('id, created_at, is_hall_of_fame')
+                    .eq('ng_id', ngId)
+                    .order('created_at', { ascending: true });
+
+                if (existing && existing.length >= 5) {
+                    const toDelete = existing.find(r => !r.is_hall_of_fame);
+                    if (toDelete) {
+                        await client.from('replays').delete().eq('id', toDelete.id);
+                    }
+                }
+            }
+
+            let attempts = 0;
+            while (attempts < 5) {
+                const { data: existingCode } = await client
+                    .from('replays')
+                    .select('id')
+                    .eq('id', code)
+                    .maybeSingle();
+                if (!existingCode) break;
+                code = generateReplayCode(5);
+                attempts++;
+            }
+
+            const record = {
+                id: code,
+                ng_id: ngId,
+                player_name: String(replayData.player_name || 'Player').slice(0, 32),
+                player_sex: String(replayData.player_sex || 'MALE').slice(0, 10),
+                player_appearance: String(replayData.player_appearance || ''),
+                tid: parseInt(replayData.tid) || 1,
+                seed: parseInt(replayData.seed) || 0,
+                score: parseInt(replayData.score) || 0,
+                floor: parseInt(replayData.floor) || 0,
+                combo: parseInt(replayData.combo) || 0,
+                replay_data: String(replayData.replay_data || ''),
+                is_hall_of_fame: !!replayData.is_hall_of_fame
+            };
+
+            const { data, error } = await client
+                .from('replays')
+                .insert([record])
+                .select()
+                .single();
+
+            if (!error && data) {
+                memoryReplays.set(code, data);
+                return data;
+            }
+            if (error) {
+                console.error('[saveReplay] Supabase insert error:', error.message || error);
+            }
+        } catch (supabaseEx) {
+            console.error('[saveReplay] Supabase exception:', supabaseEx.message);
+        }
+    }
+
+    // In-memory fallback
+    const fallback = {
+        id: code,
+        ng_id: ngId,
+        player_name: String(replayData.player_name || 'Player').slice(0, 32),
+        player_sex: String(replayData.player_sex || 'MALE').slice(0, 10),
+        player_appearance: String(replayData.player_appearance || ''),
+        tid: parseInt(replayData.tid) || 1,
+        seed: parseInt(replayData.seed) || 0,
+        score: parseInt(replayData.score) || 0,
+        floor: parseInt(replayData.floor) || 0,
+        combo: parseInt(replayData.combo) || 0,
+        replay_data: String(replayData.replay_data || ''),
+        is_hall_of_fame: false,
+        created_at: new Date().toISOString()
+    };
+    memoryReplays.set(code, fallback);
+    return fallback;
+};
+
+const safeGetReplay = async function (code) {
+    const cleanCode = String(code || '').trim().replace(/^#/, '').toUpperCase();
+    if (typeof db.getReplay === 'function') {
+        try {
+            const r = await db.getReplay(cleanCode);
+            if (r) return r;
+        } catch (e) {}
+    }
+
+    const client = db.supabase || supabase;
+    if (client) {
+        try {
+            const { data, error } = await client
+                .from('replays')
+                .select('*')
+                .eq('id', cleanCode)
+                .single();
+            if (!error && data) return data;
+        } catch (err) {}
+    }
+
+    return memoryReplays.get(cleanCode) || null;
+};
+
+const safeGetUserReplays = async function (ngId, limit = 5) {
+    if (typeof db.getUserReplays === 'function') {
+        try {
+            const r = await db.getUserReplays(ngId, limit);
+            if (r && r.length > 0) return r;
+        } catch (e) {}
+    }
+
+    const client = db.supabase || supabase;
+    if (client) {
+        try {
+            const { data, error } = await client
+                .from('replays')
+                .select('id, score, floor, combo, tid, created_at, player_name')
+                .eq('ng_id', String(ngId))
+                .order('created_at', { ascending: false })
+                .limit(limit);
+            if (!error && data) return data;
+        } catch (err) {}
+    }
+
+    return Array.from(memoryReplays.values())
+        .filter(r => r.ng_id === String(ngId))
+        .slice(-limit);
+};
 const sharp = require('sharp');
 const fs = require('fs');
 const https = require('https');
@@ -268,7 +424,7 @@ app.post('/games/icytower/backend/server.1.0.1/accounts.php', async (req, res) =
 
 app.post('/api/save_replay', express.json(), async (req, res) => {
     try {
-        const replay = await saveReplay(req.body);
+        const replay = await safeSaveReplay(req.body);
         res.json({ ok: true, replay });
     } catch (e) {
         console.error('[save_replay] Error:', e);
@@ -278,7 +434,7 @@ app.post('/api/save_replay', express.json(), async (req, res) => {
 
 app.get('/api/replay/:code', async (req, res) => {
     try {
-        const replay = await getReplay(req.params.code);
+        const replay = await safeGetReplay(req.params.code);
         if (!replay) {
             return res.status(404).json({ ok: false, error: 'Replay not found' });
         }
@@ -291,7 +447,7 @@ app.get('/api/replay/:code', async (req, res) => {
 
 app.get('/api/user_replays/:ngId', async (req, res) => {
     try {
-        const replays = await getUserReplays(req.params.ngId);
+        const replays = await safeGetUserReplays(req.params.ngId);
         res.json({ ok: true, replays });
     } catch (e) {
         console.error('[user_replays] Error:', e);
