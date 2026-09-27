@@ -5,7 +5,8 @@ const path = require('path');
 const {
     supabase,
     getProfile, updateProfile, addCoins, recordScore, getLeaderboard,
-    getChallenges, createChallenge, updateChallenge, deleteChallenge
+    getChallenges, createChallenge, updateChallenge, deleteChallenge,
+    saveReplay, getReplay, getUserReplays
 } = require('./backend/db');
 const sharp = require('sharp');
 const fs = require('fs');
@@ -262,6 +263,39 @@ app.post('/games/icytower/backend/server.1.0.1/accounts.php', async (req, res) =
     } catch (e) {
         console.error(e);
         res.status(500).send('Database Error');
+    }
+});
+
+app.post('/api/save_replay', express.json(), async (req, res) => {
+    try {
+        const replay = await saveReplay(req.body);
+        res.json({ ok: true, replay });
+    } catch (e) {
+        console.error('[save_replay] Error:', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.get('/api/replay/:code', async (req, res) => {
+    try {
+        const replay = await getReplay(req.params.code);
+        if (!replay) {
+            return res.status(404).json({ ok: false, error: 'Replay not found' });
+        }
+        res.json({ ok: true, replay });
+    } catch (e) {
+        console.error('[get_replay] Error:', e);
+        res.status(500).json({ ok: false, error: e.message });
+    }
+});
+
+app.get('/api/user_replays/:ngId', async (req, res) => {
+    try {
+        const replays = await getUserReplays(req.params.ngId);
+        res.json({ ok: true, replays });
+    } catch (e) {
+        console.error('[user_replays] Error:', e);
+        res.status(500).json({ ok: false, error: e.message });
     }
 });
 
