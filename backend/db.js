@@ -218,6 +218,108 @@ async function deleteChallenge(id) {
     }
 }
 
+function generateReplayCode(length = 5) {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+async function saveReplay(replayData) {
+    const ngId = String(replayData.ng_id || 'guest');
+
+    if (ngId !== 'guest') {
+        const { data: existing, error: listError } = await supabase
+            .from('replays')
+            .select('id, created_at, is_hall_of_fame')
+            .eq('ng_id', ngId)
+            .order('created_at', { ascending: true });
+
+        if (!listError && existing && existing.length >= 5) {
+            const toDelete = existing.find(r => !r.is_hall_of_fame);
+            if (toDelete) {
+                await supabase.from('replays').delete().eq('id', toDelete.id);
+            }
+        }
+    }
+
+    let code = generateReplayCode(5);
+    let attempts = 0;
+    while (attempts < 5) {
+        const { data: existingCode } = await supabase
+            .from('replays')
+            .select('id')
+            .eq('id', code)
+            .maybeSingle();
+        if (!existingCode) break;
+        code = generateReplayCode(5);
+        attempts++;
+    }
+
+    const record = {
+        id: code,
+        ng_id: ngId,
+        player_name: String(replayData.player_name || 'Player').slice(0, 32),
+        player_sex: String(replayData.player_sex || 'MALE').slice(0, 10),
+        player_appearance: String(replayData.player_appearance || ''),
+        tid: parseInt(replayData.tid) || 1,
+        seed: parseInt(replayData.seed) || 0,
+        score: parseInt(replayData.score) || 0,
+        floor: parseInt(replayData.floor) || 0,
+        combo: parseInt(replayData.combo) || 0,
+        replay_data: String(replayData.replay_data || ''),
+        is_hall_of_fame: !!replayData.is_hall_of_fame
+    };
+
+    const { data, error } = await supabase
+        .from('replays')
+        .insert([record])
+        .select()
+        .single();
+
+    if (error) {
+        console.error('[DB] Error saving replay:', error);
+        throw error;
+    }
+
+    return data;
+}
+
+async function getReplay(code) {
+    const cleanCode = String(code).trim().replace(/^#/, '').toUpperCase();
+    const { data, error } = await supabase
+        .from('replays')
+        .select('*')
+        .eq('id', cleanCode)
+        .single();
+
+    if (error) {
+        if (error.code === 'PGRST116') {
+            return null;
+        }
+        console.error('[DB] Error fetching replay:', error);
+        throw error;
+    }
+    return data;
+}
+
+async function getUserReplays(ngId, limit = 5) {
+    const { data, error } = await supabase
+        .from('replays')
+        .select('id, score, floor, combo, tid, created_at, player_name')
+        .eq('ng_id', String(ngId))
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('[DB] Error fetching user replays:', error);
+        return [];
+    }
+    return data || [];
+}
+
 module.exports = {
     supabase,
     getProfile,
@@ -229,5 +331,8 @@ module.exports = {
     createChallenge,
     updateChallenge,
     deleteChallenge,
+    saveReplay,
+    getReplay,
+    getUserReplays,
     DEFAULT_SAVE
 };
